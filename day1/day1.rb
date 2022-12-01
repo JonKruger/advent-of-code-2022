@@ -3,7 +3,7 @@ def part1(input)
 end
 
 def part2(input)
-  elves = input.split("\n").join(",").split(",,").map { |a| a.split(",") }.map { |a| a.map(&:to_i) }.map(&:sum).sort.reverse[0..2].sum
+  input.split("\n").join(",").split(",,").map { |a| a.split(",") }.map { |a| a.map(&:to_i) }.map(&:sum).sort.reverse[0..2].sum
 end
 
 test_input = <<-INPUT
