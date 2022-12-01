@@ -1,9 +1,9 @@
 def part1(input)
-  input.split("\n").join(",").split(",,").map { |a| a.split(",") }.map { |a| a.map(&:to_i) }.map(&:sum).max
+  input.split("\n\n").map { |a| a.split("\n") }.map { |a| a.map(&:to_i) }.map(&:sum).max
 end
 
 def part2(input)
-  input.split("\n").join(",").split(",,").map { |a| a.split(",") }.map { |a| a.map(&:to_i) }.map(&:sum).sort.reverse[0..2].sum
+  input.split("\n\n").map { |a| a.split("\n") }.map { |a| a.map(&:to_i) }.map(&:sum).sort.reverse[0..2].sum
 end
 
 test_input = <<-INPUT
