@@ -41,20 +41,20 @@ move 1 from 1 to 2
         throw Exception(result.toString());
     }
 
-    // result = part2(testInput);
-    // if (result != 4) {
-    //     throw Exception(result.toString());
-    // }
+    result = part2(testStackInput, testMoveInput);
+    if (result != "MCD") {
+        throw Exception(result.toString());
+    }
 
     var stacksInput = File("input_stacks.txt").readText();
     var movesInput = File("input_moves.txt").readText();
     val part1Result = part1(stacksInput, movesInput);
-    // val part2Result = part2(input);
+    val part2Result = part2(stacksInput, movesInput);
     println("part1 - $part1Result");
-    // println("part2 - $part2Result");
+    println("part2 - $part2Result");
 }
 
-fun parseStackInput(stackInput: String): List<ArrayDeque<String>> {
+fun parseStackInput(stackInput: String): MutableList<ArrayDeque<String>> {
     var lines = stackInput.split("\n");
     val stackCount = lines.last().split(" ").filter { x -> x.trim().length > 0 }.last().toInt();
 
@@ -73,7 +73,7 @@ fun parseStackInput(stackInput: String): List<ArrayDeque<String>> {
                 stack.add(letter);
         };
         stack
-    }
+    }.toMutableList();
 
     return stacks;
 }
@@ -93,6 +93,24 @@ fun part1(stackInput: String, moveInput: String): String {
             var item = stacks[fromStack - 1].removeLast();
             stacks[toStack - 1].add(item);
         }
+    };
+
+    return stacks.map { stack -> stack.removeLast() }.joinToString("");
+}
+
+fun part2(stackInput: String, moveInput: String): String {
+    var stacks = parseStackInput(stackInput);
+    var moves = parseMoveInput(moveInput);
+
+    moves.forEach { move -> 
+        val (times, fromStackNumber, toStackNumber) = move;
+        var fromStack = stacks[fromStackNumber - 1];
+        var toStack = stacks[toStackNumber - 1];
+
+        var items = fromStack.slice((fromStack.size - times)..(fromStack.size - 1));
+        fromStack = ArrayDeque<String>(fromStack.slice(0..(fromStack.size - times - 1)));
+        stacks.set(fromStackNumber - 1, fromStack);
+        toStack.addAll(items);
     };
 
     return stacks.map { stack -> stack.removeLast() }.joinToString("");
