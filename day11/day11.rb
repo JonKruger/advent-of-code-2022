@@ -1,6 +1,6 @@
 class Monkey
-  attr_reader :items, :operation, :divisible_by, :if_true, :if_false
-  attr_accessor :items_inspected
+  attr_reader :operation, :divisible_by, :if_true, :if_false
+  attr_accessor :items_inspected, :items
 
   def initialize(starting_items:, operation:, divisible_by:, if_true:, if_false:)
     @items = starting_items
@@ -13,6 +13,7 @@ class Monkey
 end
 
 def inspect_items(monkeys, number_of_rounds, divide_by_3: true)
+  common_denominator = monkeys.map(&:divisible_by).reduce(:*)
   number_of_rounds.times do |round|
     puts("***** ROUND #{round}")
     monkeys.each_with_index do |monkey, monkey_index|
@@ -27,13 +28,17 @@ def inspect_items(monkeys, number_of_rounds, divide_by_3: true)
           new_value = (new_value / 3).to_i
           # puts "  Monkey gets bored with item. Worry level is divided by 3 to #{new_value}"
         end
+
+        # (I had to look this one up, I admit)
+        new_value %= common_denominator
+
         if new_value % monkey.divisible_by == 0
           # puts "  Current worry level is divisible"
-          puts "  Item with worry level #{new_value} is thrown to monkey #{monkey.if_true}"
+          # puts "  Item with worry level #{new_value} is thrown to monkey #{monkey.if_true}"
           monkeys[monkey.if_true].items << new_value
         else
           # puts "  Current worry level is not divisible"
-          puts "  Item with worry level #{new_value} is thrown to monkey #{monkey.if_false}"
+          # puts "  Item with worry level #{new_value} is thrown to monkey #{monkey.if_false}"
           monkeys[monkey.if_false].items << new_value
         end
       end
@@ -107,14 +112,14 @@ def real_monkeys
     Monkey.new(
       starting_items: [74, 97, 66, 57],
       operation: -> (old) { old + 6 },
-      test: -> (value) { value % 17 == 0 },
+      divisible_by: 17,
       if_true: 1,
       if_false: 0
     ),
     Monkey.new(
       starting_items: [86, 54, 53],
       operation: -> (old) { old + 2 },
-      test: -> (value) { value % 13 == 0 },
+      divisible_by: 13,
       if_true: 1,
       if_false: 2
     ),
@@ -163,6 +168,6 @@ raise result.inspect unless result == 10605
 
 result = part1(real_monkeys)
 puts "part1 - #{result}"
-#
-# result = part2(real_monkeys)
-# puts "part2 - #{result}"
+
+result = part2(real_monkeys)
+puts "part2 - #{result}"
