@@ -42,18 +42,19 @@ end
 
 
 class Grid
-  attr_reader :squares
+  attr_reader :squares, :square_grid
 
-  def initialize(squares)
-    @squares = squares.freeze
+  def initialize(square_grid)
+    @square_grid = square_grid
+    @squares = square_grid.flatten
   end
 
   def start_square
-    squares.select(&:start?).first
+    @start_square ||= squares.select(&:start?).first
   end
 
   def end_square
-    squares.select(&:end?).first
+    @end_square ||= squares.select(&:end?).first
   end
 
   def calculate_distance_to_end
@@ -71,12 +72,8 @@ class Grid
   end
 
   def print_grid(mode)
-    row_count = squares.map { |s| s.location[0] }.max
-    column_count = squares.map { |s| s.location[1] }.max
-
-    output = (0..row_count).map do |row_index|
-      (0..column_count).map do |column_index|
-        square = squares.select { |s| s.location == [row_index, column_index] }.first
+    output = square_grid.map do |row|
+      row.map do |square|
         case mode
         when :distance_to_end
           (square.distance_to_end&.to_s || " ").rjust(4, " ")
@@ -90,17 +87,26 @@ class Grid
   end
 end
 
+class StupidStepper
+  def step(sequence)
+    sequence.steppable_neighbors.map do |n|
+      Sequence.new(sequence.squares + [n])
+    end
+  end
+end
+
 class Sequence
   attr_reader :squares
 
+  def self.stepper
+    @@stepper ||= StupidStepper.new
+  end
   def initialize(squares)
     @squares = squares.freeze
   end
 
   def step
-    steppable_neighbors.map do |n|
-      Sequence.new(squares + [n])
-    end
+    self.class.stepper.step(self)
   end
 
   def steppable_neighbors
@@ -114,6 +120,10 @@ class Sequence
   def size
     @squares.size
   end
+
+  def last
+    @squares.last
+  end
 end
 
 def build_grid(input)
@@ -121,14 +131,15 @@ def build_grid(input)
   num_rows = rows.size
   num_cols = input.split("\n").compact[0].length
 
-  (0...num_rows).each do |row|
-    (0...num_cols).each do |col|
+  square_grid = (0...num_rows).map do |row|
+    (0...num_cols).map do |col|
       square = rows[row][col]
       square.location = [row, col]
       square.neighbors << rows[row][col-1] if col > 0
       square.neighbors << rows[row][col+1] if col < num_cols - 1
       square.neighbors << rows[row-1][col] if row > 0
       square.neighbors << rows[row+1][col] if row < num_rows - 1
+      square
     end
   end
   all_squares = rows.flatten
@@ -136,7 +147,7 @@ def build_grid(input)
   raise if all_squares.any? { |node| node.value.nil? }
   raise if all_squares.any? { |node| node.neighbors.length < 2 }
 
-  Grid.new(all_squares)
+  Grid.new(square_grid)
 end
 
 def part1(input)
@@ -145,12 +156,17 @@ def part1(input)
   sequences = [Sequence.new([grid.start_square])]
   steps = 0
   while !sequences.any?(&:complete?)
-    sequences = sequences.map { |s| s.step }.flatten
+    sequences = prune(sequences.map { |s| s.step }.flatten)
     steps += 1
-    puts "After #{steps} steps, I have #{sequences.size} sequences"
+    raise if sequences.empty?
+    puts "After #{steps} steps, I have #{sequences.size} sequences (#{sequences.map { |s| s.last.distance_to_end }.min})"
   end
   puts sequences.select(&:complete?).first.squares.map(&:char).inspect
   steps
+end
+
+def prune(sequences)
+  sequences.sort_by { |s| s.last.distance_to_end }.reverse[0...5000]
 end
 
 test_input = <<-INPUT
@@ -164,5 +180,5 @@ INPUT
 result = part1(test_input)
 raise result.inspect unless result == 31
 
-# input = File.read("input.txt")
-# puts("part1 = #{part1(input)}")
+input = File.read("input.txt")
+puts("part1 = #{part1(input)}")
