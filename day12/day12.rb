@@ -179,7 +179,7 @@ end
 
 def prune(sequences)
   # prune duplicate sequences
-  sequences = sequences.group_by(&:last).map { |_, values| values.first }
+  sequences = sequences.group_by(&:last).map { |_, values| values.sort_by { |s| -s.distance_to_end }.first }
 
   # prune sequences that are farther away
   least_distance = sequences.map(&:distance_to_end).min
