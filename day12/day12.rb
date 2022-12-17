@@ -26,10 +26,6 @@ class Square
     @steppable_neighbors ||= (neighbors.select { |n| n.value <= value + 1 })
   end
 
-  def start?
-    char == "S"
-  end
-
   def end?
     char == "E"
   end
@@ -44,13 +40,14 @@ end
 class Grid
   attr_reader :squares, :square_grid
 
-  def initialize(square_grid)
+  def initialize(square_grid, start_selector)
     @square_grid = square_grid
     @squares = square_grid.flatten
+    @start_selector = start_selector
   end
 
-  def start_square
-    @start_square ||= squares.select(&:start?).first
+  def start_squares
+    squares.select { |s| @start_selector.call(s) }
   end
 
   def end_square
@@ -68,22 +65,6 @@ class Grid
         [square] + square.neighbors
       end.flatten.uniq
     end
-    print_grid(:distance_to_end)
-  end
-
-  def print_grid(mode)
-    output = square_grid.map do |row|
-      row.map do |square|
-        case mode
-        when :distance_to_end
-          (square.distance_to_end&.to_s || " ").rjust(4, " ")
-          # "-"
-        else
-          "?"
-        end
-      end.join + "\n"
-    end.join
-    puts output
   end
 end
 
@@ -136,7 +117,7 @@ class Sequence
   end
 end
 
-def build_grid(input)
+def build_grid(input, start_selector)
   rows = input.split("\n").compact.map { |row| row.chars.compact.map { |value| Square.new(value) } }
   num_rows = rows.size
   num_cols = input.split("\n").compact[0].length
@@ -157,22 +138,23 @@ def build_grid(input)
   raise if all_squares.any? { |node| node.value.nil? }
   raise if all_squares.any? { |node| node.neighbors.length < 2 }
 
-  Grid.new(square_grid)
+  Grid.new(square_grid, start_selector)
 end
 
-def part1(input)
-  grid = build_grid(input)
+def run(input, start_selector)
+  grid = build_grid(input, start_selector)
   grid.calculate_distance_to_end
-  sequences = [Sequence.new([grid.start_square])]
+
+  sequences = grid.start_squares.map { |start_square| Sequence.new([start_square]) }
   steps = 0
   start_time = Time.now
+  puts "starting with #{sequences.size} sequences"
   while !sequences.any?(&:complete?)
     sequences = prune(sequences.map { |s| s.step }.flatten)
     steps += 1
     raise if sequences.empty?
-    puts "After #{steps} steps, I have #{sequences.size} sequences (#{sequences.map { |s| s.last.distance_to_end }.tally})"
+    puts "After #{steps} steps, I have #{sequences.size} sequences (#{sequences.map { |s| s.last.value }.tally})"
   end
-  puts sequences.select(&:complete?).first.squares.map(&:char).inspect
   puts "finished in #{Time.now - start_time} seconds"
   sequences.select(&:complete?).first.size - 1
 end
@@ -181,9 +163,19 @@ def prune(sequences)
   # prune duplicate sequences
   sequences = sequences.group_by(&:last).map { |_, values| values.sort_by { |s| -s.distance_to_end }.first }
 
+  # prune sequences where other sequences have already moved farther along
+  # past_squares = sequences.map { |s| s.squares[0...-1] }.uniq
+  # last_squares = sequences.map(&:last)
+  # last_squares_to_keep = last_squares - past_squares
+  # sequences = sequences.select { |s| last_squares_to_keep.include?(s.last) }
+
   # prune sequences that are farther away
   least_distance = sequences.map(&:distance_to_end).min
-  sequences.select { |s| s.distance_to_end <= least_distance + 20 }
+  sequences.select { |s| s.distance_to_end <= least_distance + 80 }
+
+  # prune sequences with values that are too low
+  highest_value = sequences.map { |s| s.last.value }.max
+  sequences.select { |s| s.last.value >= highest_value - 5 }
 end
 
 test_input = <<-INPUT
@@ -194,8 +186,18 @@ acctuvwj
 abdefghi
 INPUT
 
-result = part1(test_input)
+part1_start_selector = lambda { |square| square.char == "S" }
+
+result = run(test_input, part1_start_selector)
 raise result.inspect unless result == 31
 
 input = File.read("input.txt")
-puts("part1 = #{part1(input)}")
+result = run(input, part1_start_selector)
+puts("part1 = #{result}")
+
+part2_start_selector = lambda { |square| ["S", "a"].include?(square.char) }
+result = run(test_input, part2_start_selector)
+raise result.inspect unless result == 29
+
+result = run(input, part2_start_selector)
+puts("part2 = #{result}")
