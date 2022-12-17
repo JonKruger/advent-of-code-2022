@@ -95,6 +95,12 @@ class StupidStepper
   end
 end
 
+# class LookaheadStepper
+#   def step(sequence)
+#
+#   end
+# end
+
 class Sequence
   attr_reader :squares
 
@@ -110,11 +116,11 @@ class Sequence
   end
 
   def steppable_neighbors
-    @squares.last.steppable_neighbors - @squares
+    @steppable_neighbors ||= last.steppable_neighbors - @squares
   end
 
   def complete?
-    @squares.last.end?
+    last.end?
   end
 
   def size
@@ -123,6 +129,10 @@ class Sequence
 
   def last
     @squares.last
+  end
+
+  def distance_to_end
+    last.distance_to_end
   end
 end
 
@@ -155,18 +165,25 @@ def part1(input)
   grid.calculate_distance_to_end
   sequences = [Sequence.new([grid.start_square])]
   steps = 0
+  start_time = Time.now
   while !sequences.any?(&:complete?)
     sequences = prune(sequences.map { |s| s.step }.flatten)
     steps += 1
     raise if sequences.empty?
-    puts "After #{steps} steps, I have #{sequences.size} sequences (#{sequences.map { |s| s.last.distance_to_end }.min})"
+    puts "After #{steps} steps, I have #{sequences.size} sequences (#{sequences.map { |s| s.last.distance_to_end }.tally})"
   end
   puts sequences.select(&:complete?).first.squares.map(&:char).inspect
-  steps
+  puts "finished in #{Time.now - start_time} seconds"
+  sequences.select(&:complete?).first.size - 1
 end
 
 def prune(sequences)
-  sequences.sort_by { |s| s.last.distance_to_end }.reverse[0...5000]
+  # prune duplicate sequences
+  sequences = sequences.group_by(&:last).map { |_, values| values.first }
+
+  # prune sequences that are farther away
+  least_distance = sequences.map(&:distance_to_end).min
+  sequences.select { |s| s.distance_to_end <= least_distance + 20 }
 end
 
 test_input = <<-INPUT
