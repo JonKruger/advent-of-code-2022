@@ -1,6 +1,4 @@
 class Grid
-  attr_reader :sand_points
-
   def self.parse(input)
     lines = input.split("\n")
     points = []
@@ -31,32 +29,46 @@ class Grid
   end
 
   def initialize(rock_points)
-    @rock_points = rock_points
-    @sand_points = []
     @into_the_abyss = false
     @floor_y = rock_points.map { |x, y| y }.max + 2
     @full = false
+
+    @max_y = -1
+    @points_hash = {}
+    rock_points.each do |x,y|
+      add_point(x, y, :rock)
+    end
   end
 
-  def points
-    @rock_points + @sand_points
+  def add_point(x, y, type)
+    @points_hash[x] ||= {}
+    @points_hash[x][y] = type
+    @max_y = [@max_y, y].max
+  end
+
+  def item_at_point(location)
+    @points_hash[location[0]]&.[](location[1])
+  end
+
+  def populated?(location)
+    !item_at_point(location).nil?
   end
 
   def drop_until_the_abyss
     while (!@into_the_abyss && !@full)
       drop_sand(:abyss)
-      print if @sand_points.size % 100 == 0
+      print if populated_count % 100 == 0
     end
   end
 
   def drop_on_the_floor
     while (!@full)
       drop_sand(:floor)
-      print if @sand_points.size % 100 == 0
+      print if populated_count % 100 == 0
     end
   end
   def drop_sand(mode)
-    puts "dropping sand # #{@sand_points.size} #{mode}"
+    puts "dropping sand # #{populated_count} #{mode}"
 
     current_location = [500, 0]
     previous_location = nil
@@ -65,7 +77,7 @@ class Grid
       current_location = process_sand_fall(current_location)
 
       # are we falling into the abyss?
-      if current_location[1] > points.map { |_, y| y }.max
+      if current_location[1] > @max_y
         @into_the_abyss = true
         return if mode == :abyss
       end
@@ -78,7 +90,7 @@ class Grid
       @full = true
     end
 
-    @sand_points << current_location
+    add_point(*current_location, :sand)
     nil
   end
 
@@ -89,30 +101,31 @@ class Grid
 
     # try to move down
     down_location = [current_location[0], current_location[1] + 1]
-    return down_location if !points.include?(down_location)
+    return down_location unless populated?(down_location)
 
     # try to move down-left
     down_left_location = [current_location[0] - 1, current_location[1] + 1]
-    return down_left_location if !points.include?(down_left_location)
+    return down_left_location unless populated?(down_left_location)
 
     # try to move down-right-
     down_right_location = [current_location[0] + 1, current_location[1] + 1]
-    return down_right_location if !points.include?(down_right_location)
+    return down_right_location unless populated?(down_right_location)
 
     current_location
   end
 
   def print
-    x_min = points.map { |p| p[0] }.min
-    x_max = points.map { |p| p[0] }.max
-    y_min = points.map { |p| p[1] }.min
-    y_max = points.map { |p| p[1] }.max
+    x_min = @points_hash.keys.min
+    x_max = @points_hash.keys.max
+    y_min = @points_hash.values.map { |y_hash| y_hash.keys }.flatten.min
+    y_max = @points_hash.values.map { |y_hash| y_hash.keys }.flatten.max
 
     output = (y_min..y_max).map do |y|
       (x_min..x_max).map do |x|
-        if @rock_points.include?([x, y])
+        item = item_at_point([x, y])
+        if item == :rock
           "#"
-        elsif @sand_points.include?([x, y])
+        elsif item == :sand
           "o"
         else
           "."
@@ -125,8 +138,12 @@ class Grid
     puts((x_min..x_max).map { |_| "-"}.join + " end")
   end
 
-  def populated
-    points.size
+  def populated_count
+    @points_hash.map { |x, y_hash| y_hash.size }.sum
+  end
+
+  def sand_count
+    @points_hash.values.map { |y_hash| y_hash.values.select { |v| v == :sand }.size }.flatten.sum
   end
 end
 
@@ -135,24 +152,26 @@ test_input = <<-INPUT
 503,4 -> 502,4 -> 502,9 -> 494,9
 INPUT
 grid = Grid.parse(test_input)
-raise grid.populated.inspect unless grid.populated == 20
+raise grid.populated_count.inspect unless grid.populated_count == 20
 
 grid.drop_sand(:abyss)
-raise grid.populated.inspect unless grid.populated == 21
+raise grid.populated_count.inspect unless grid.populated_count == 21
 
 grid.drop_until_the_abyss
 grid.print
-raise grid.sand_points.size.inspect unless grid.sand_points.size == 24
+raise grid.sand_count.inspect unless grid.sand_count == 24
 
 grid.drop_on_the_floor
 grid.print
-raise grid.sand_points.size.inspect unless grid.sand_points.size == 93
+raise grid.sand_count.inspect unless grid.sand_count == 93
 
 input = File.read("input.txt")
-# grid = Grid.parse(input)
-# grid.drop_until_the_abyss
-# puts "part1 - #{grid.sand_points.size}"
+grid = Grid.parse(input)
+grid.drop_until_the_abyss
+grid.print
+puts "part1 - #{grid.sand_count}"
 
 grid = Grid.parse(input)
 grid.drop_on_the_floor
-puts "part2 - #{grid.sand_points.size}"
+grid.print
+puts "part2 - #{grid.sand_count}"
