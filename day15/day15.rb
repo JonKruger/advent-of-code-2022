@@ -1,9 +1,13 @@
 def combine_ranges(ranges)
   raise ranges.inspect unless ranges.is_a?(Array)
+  raise ranges.inspect unless ranges.all? { |range| range.is_a?(Range) }
   combined_something = false
+
   ranges = ranges.sort_by { |r| r.begin }.reduce([]) do |result, range|
     last = result.last
-    if last.nil?
+    if range.size == 0
+      # ignore empty ranges
+    elsif last.nil?
       result << range
     elsif last.cover?(range)
       # do nothing
@@ -16,9 +20,16 @@ def combine_ranges(ranges)
     end
     result
   end
-  puts(ranges.inspect)
 
   combined_something ? combine_ranges(ranges) : ranges
+end
+
+def split_range(range, number_to_remove)
+  if range.include?(number_to_remove)
+    [((range.begin)..(number_to_remove - 1)), ((number_to_remove + 1)..(range.end))].select { |range| range.size > 0 }
+  else
+    [range]
+  end
 end
 
 result = combine_ranges([0..3, 3..4])
@@ -35,6 +46,18 @@ raise result.inspect unless result == [1..3]
 
 result = combine_ranges([1..3, 1..2])
 raise result.inspect unless result == [1..3]
+
+result = split_range(0..4, 3)
+raise result.inspect unless result == [0..2, 4..4]
+
+result = split_range(0..4, 0)
+raise result.inspect unless result == [1..4]
+
+result = split_range(0..4, 4)
+raise result.inspect unless result == [0..3]
+
+result = split_range(0..4, 31)
+raise result.inspect unless result == [0..4]
 
 class Sensor
   attr_reader :location, :closest_beacon_location
@@ -54,30 +77,19 @@ class Sensor
     @distance_to_closest_beacon ||= distance_to(closest_beacon_location)
   end
 
-  def no_beacon_spaces
-    @no_beacon_spaces ||= begin
-                            min_y = [location[1] - distance_to_closest_beacon, @min_coord].max
-                            max_y = [location[1] + distance_to_closest_beacon, @max_coord].min
-                            (min_y..max_y).reduce([]) do |spaces, y|
-                              puts "... calculating no beacon spaces for #{y}"
-                              spaces += no_beacon_spaces_x(y).map { |x| [x, y] }
-                            end
-                          end
-  end
-
   def no_beacon_spaces_x(y)
     @no_beacon_spaces_x[y] ||= begin
-                                 # start = Time.now
-                                 # puts start.to_f
-                                 # puts "0 #{Time.now - start}"
                                  min_x = [location[0] - (distance_to_closest_beacon - (y - location[1]).abs), @min_coord].max
-                                 # puts "1 #{Time.now - start}"
                                  max_x = [location[0] + (distance_to_closest_beacon - (y - location[1]).abs), @max_coord].min
-                                 # puts "2 #{Time.now - start}"
-                                 spaces = (min_x..max_x).to_a
-                                 # puts "3 #{Time.now - start}"
-                                 spaces -= [closest_beacon_location[0]] if closest_beacon_location[1] == y
-                                 # puts "4 #{Time.now - start}"
+                                 spaces = (min_x..max_x)
+                                 return nil if spaces.size == 0
+
+                                 if closest_beacon_location[1] == y
+                                   spaces = split_range(spaces, closest_beacon_location[0])
+                                 else
+                                   [spaces]
+                                 end
+
                                  spaces
                                end
   end
@@ -107,17 +119,7 @@ class Grid
   end
 
   def no_beacon_spaces_x(y)
-    sensors.map { |s| s.no_beacon_spaces_x(y) }.flatten.uniq.sort
-  end
-
-  def no_beacon_spaces
-    @no_beacon_spaces ||= begin
-                            sensors.reduce([]) do |spaces, s|
-                              sensor_no_beacon_spaces = s.no_beacon_spaces
-                              puts("sensor #{s.location.inspect} has #{sensor_no_beacon_spaces.size} no beacon spaces")
-                              spaces += sensor_no_beacon_spaces
-                            end.uniq - beacon_locations
-                          end
+    combine_ranges(sensors.map { |s| s.no_beacon_spaces_x(y) }.flatten.compact)
   end
 
   def beacon_locations
@@ -125,46 +127,29 @@ class Grid
   end
 
   def find_missing_beacon
-    puts("find_missing_beacon")
-    # puts("#{(no_beacon_spaces + beacon_locations).size} spaces to process")
-    hash = {}
-
     (@min_coord..@max_coord).each do |y|
-      start = Time.now
+      puts "processing #{y} #{Time.now}" if y % 10000 == 0
+      beacon_x_locations = beacon_locations.select { |x_loc, y_loc| y_loc == y && x_loc >= @min_coord && x_loc <= @max_coord }.map { |x_loc, _| x_loc..x_loc }
 
-      x_locations = (sensors.map { |s| s.no_beacon_spaces_x(y) } + beacon_locations.select { |_, y_loc| y_loc == y }.map { |x_loc, _| x_loc }).flatten.uniq
-      if x_locations.size != @max_coord - @min_coord + 1
-        return [((@min_coord..@max_coord).to_a - x_locations)[0], y]
+      x_locations = combine_ranges(sensors.map { |s| s.no_beacon_spaces_x(y) }.flatten.compact + beacon_x_locations)
+      if x_locations.map(&:size).sum != @max_coord - @min_coord + 1
+        return [((@min_coord..@max_coord).to_a - x_locations.map(&:to_a).flatten)[0], y]
       end
     end
 
     raise "no missing beacon found"
-    #
-    # (no_beacon_spaces + beacon_locations).each do |x, y|
-    #   if x >= min_coord && x <= max_coord && y >= min_coord && y <= max_coord
-    #     hash[y] ||= {}
-    #     hash[y][x] = 1
-    #   end
-    # end
-    #
-    # (min_coord..max_coord).each do |y|
-    #   if hash[y].keys.size != max_coord - min_coord + 1
-    #     puts("checking #{y}")
-    #     x = ((min_coord..max_coord).to_a - hash[y].keys)[0]
-    #     return [x, y]
-    #   end
-    # end
   end
 end
 
 def part1(input)
   grid = Grid.parse(input, -9000000000, 9000000000)
-  grid.no_beacon_spaces_x(2000000).size
+  grid.no_beacon_spaces_x(2000000).map(&:size).sum
 end
 
 def part2(input, min_coord, max_coord)
   grid = Grid.parse(input, min_coord, max_coord )
   missing_beacon = grid.find_missing_beacon
+  puts "missing beacon is at #{missing_beacon.inspect}"
   missing_beacon[0] * 4_000_000 + missing_beacon[1]
 end
 
@@ -187,21 +172,16 @@ INPUT
 grid = Grid.parse(test_input, -9999, 9999)
 raise unless grid.sensor_at([2, 18]).closest_beacon_location == [-2, 15]
 raise grid.sensor_at([8, 7]).distance_to_closest_beacon.inspect unless grid.sensor_at([8, 7]).distance_to_closest_beacon == 9
-raise grid.sensor_at([8, 7]).no_beacon_spaces_x(10).inspect unless grid.sensor_at([8, 7]).no_beacon_spaces_x(10) == (3..14).to_a
-raise grid.sensor_at([8, 7]).no_beacon_spaces.size.inspect unless grid.sensor_at([8, 7]).no_beacon_spaces.size == 180
-raise grid.no_beacon_spaces_x(10).inspect unless grid.no_beacon_spaces_x(10).size == 26
+raise grid.sensor_at([8, 7]).no_beacon_spaces_x(10).inspect unless grid.sensor_at([8, 7]).no_beacon_spaces_x(10) == [3..14]
+raise grid.no_beacon_spaces_x(10).inspect unless grid.no_beacon_spaces_x(10).map(&:size).sum == 26
 
 result = part2(test_input, 0, 20)
 raise result.inspect unless result == 56000011
 
-# grid.sensors.each do |s|
-#   puts "#{s.location.inspect} - #{s.no_beacon_spaces_x(10).inspect}"
-# end
-
 # part1
-# input = File.read("input.txt")
-# puts "part1 - #{part1(input)}"
-#
+input = File.read("input.txt")
+puts "part1 - #{part1(input)}"
+
 # part2
-# input = File.read("input.txt")
-# puts "part2 - #{part2(input, 0, 4_000_000)}"
+input = File.read("input.txt")
+puts "part2 - #{part2(input, 0, 4_000_000)}"
