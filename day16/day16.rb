@@ -44,13 +44,18 @@ class ValuePath
     @distance ||= path.size - 1
   end
 
+  def flow_possible_in(minutes)
+    flow_minutes = minutes - distance - 1
+    flow_minutes * flow_rate
+  end
+
   def flow_per_minute
     @flow_per_minute ||= flow_rate.to_f / distance.to_f
   end
 end
 
 class Map
-  def self.parse(input)
+  def self.parse(input, time_limit)
     lines = input.split("\n")
     valves = {}
     lines.each do |line|
@@ -59,16 +64,23 @@ class Map
       valve = Valve.new(match[1], match[2].to_i, match[3].split(", "))
       valves[valve.name] = valve
     end
-    Map.new(valves)
+    map = Map.new(valves, time_limit)
+    map.map_value_paths
+    map
   end
 
-  attr_reader :time_elapsed, :current_location, :pressure_released
+  attr_reader :time_elapsed, :current_location, :pressure_released, :time_limit
 
-  def initialize(valve_hash)
+  def initialize(valve_hash, time_limit)
     @valve_hash = valve_hash
     @time_elapsed = 0
     @current_location = "AA"
     @pressure_released = 0
+    @time_limit = time_limit
+  end
+
+  def time_left
+    time_limit - time_elapsed
   end
 
   def [](name)
@@ -93,9 +105,15 @@ class Map
     tick
   end
 
+  def travel_value_path(value_path)
+    raise unless current_location == value_path.start_location
+    value_path.path[1..].each { |location| move_to(location) }
+  end
+
   def open_valve
     tick
     current_valve.open
+    @value_paths = @value_paths.select { |path| path.destination != current_location }
   end
 
   def tick
@@ -133,6 +151,10 @@ class Map
   def value_paths_from(start_location)
     @value_paths.select { |path| path.start_location == start_location }
   end
+
+  def maximize_pressure_released
+    
+  end
 end
 
 test_input = <<-INPUT
@@ -147,7 +169,7 @@ Valve HH has flow rate=22; tunnel leads to valve GG
 Valve II has flow rate=0; tunnels lead to valves AA, JJ
 Valve JJ has flow rate=21; tunnel leads to valve II
 INPUT
-map = Map.parse(test_input)
+map = Map.parse(test_input, 30)
 raise unless map["BB"].flow_rate == 13
 raise unless map["BB"].leads_to.sort == ["AA", "CC"]
 raise unless map["HH"].flow_rate == 22
@@ -156,6 +178,14 @@ raise unless map.valves.all?(&:closed?)
 raise unless map.flow_rate == 0
 raise unless map.time_elapsed == 0
 raise unless map.current_location == "AA"
+
+raise unless map.value_paths_from("AA").size == 3
+aa_jj_path = map.value_paths_from("AA").select { |path| path.destination == "JJ" }.first
+raise unless aa_jj_path.distance == 2
+raise unless aa_jj_path.flow_rate == 21
+raise unless aa_jj_path.flow_per_minute == 10.5
+raise unless aa_jj_path.flow_possible_in(3) == 0
+raise unless aa_jj_path.flow_possible_in(4) == 21
 
 begin
   map.move_to("nope")
@@ -180,9 +210,4 @@ raise unless map.pressure_released == 20
 raise unless map.time_elapsed == 3
 raise unless map.current_location == "CC"
 
-map.map_value_paths
-raise unless map.value_paths_from("AA").size == 3
-aa_jj_path = map.value_paths_from("AA").select { |path| path.destination == "JJ" }.first
-raise unless aa_jj_path.distance == 2
-raise unless aa_jj_path.flow_rate == 21
-raise unless aa_jj_path.flow_per_minute == 10.5
+map = Map.parse(test_input, 30)
