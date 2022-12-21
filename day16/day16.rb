@@ -25,6 +25,30 @@ class Valve
   end
 end
 
+class ValuePath
+  attr_reader :path, :flow_rate
+  def initialize(path, flow_rate)
+    @path = path.freeze
+    @flow_rate = flow_rate.freeze
+  end
+
+  def start_location
+    @start_location ||= path.first
+  end
+
+  def destination
+    @destination ||= path.last
+  end
+
+  def distance
+    @distance ||= path.size - 1
+  end
+
+  def flow_per_minute
+    @flow_per_minute ||= flow_rate.to_f / distance.to_f
+  end
+end
+
 class Map
   def self.parse(input)
     lines = input.split("\n")
@@ -78,6 +102,37 @@ class Map
     @time_elapsed += 1
     @pressure_released += flow_rate
   end
+
+  def map_value_paths
+    @value_paths = valves.map do |valve|
+      # puts("starting #{valve.name}")
+      paths = identify_next_stops([valve.name])
+      # puts("result is #{paths}")
+      paths.map do |path|
+        # puts("creating #{path.inspect}")
+        ValuePath.new(path, @valve_hash[path.last].flow_rate)
+      end
+    end.flatten
+  end
+
+  def identify_next_stops(path)
+    current_valve = @valve_hash[path.last]
+    if path.size > 1 && current_valve.flow_rate > 0
+      # puts("done")
+      return [path]
+    end
+
+    current_valve.leads_to
+                 .select { |next_valve| !path.include?(next_valve) }
+                 .reduce([]) do |new_paths, next_valve|
+      # puts("next #{next_valve}")
+      new_paths += identify_next_stops(path + [next_valve])
+    end
+  end
+
+  def value_paths_from(start_location)
+    @value_paths.select { |path| path.start_location == start_location }
+  end
 end
 
 test_input = <<-INPUT
@@ -125,3 +180,9 @@ raise unless map.pressure_released == 20
 raise unless map.time_elapsed == 3
 raise unless map.current_location == "CC"
 
+map.map_value_paths
+raise unless map.value_paths_from("AA").size == 3
+aa_jj_path = map.value_paths_from("AA").select { |path| path.destination == "JJ" }.first
+raise unless aa_jj_path.distance == 2
+raise unless aa_jj_path.flow_rate == 21
+raise unless aa_jj_path.flow_per_minute == 10.5
