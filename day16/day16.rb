@@ -54,6 +54,64 @@ class ValuePath
   end
 end
 
+class Path
+  attr_reader :time_elapsed, :current_location, :pressure_released, :time_limit, :valve_path, :value_paths,
+              :open_valves, :flow_rate, :open_valves
+
+  def initialize(time_elapsed, current_location, pressure_released, time_limit, valve_path,
+                 value_paths, open_valves, valve_hash, flow_rate)
+    raise if value_paths.nil?
+    @time_elapsed = time_elapsed
+    @current_location = current_location
+    @pressure_released = pressure_released
+    @time_limit = time_limit
+    @valve_path = valve_path.dup
+    @value_paths = value_paths.dup
+    @open_valves = open_valves.dup
+    @valve_hash = valve_hash
+    @flow_rate = flow_rate
+  end
+
+  def clone
+    Path.new(time_elapsed, current_location, pressure_released, time_limit, valve_path, value_paths, open_valves,
+             @valve_hash, flow_rate)
+  end
+
+  def valves
+    @valve_hash.values
+  end
+
+  def time_left
+    time_limit - time_elapsed
+  end
+
+  def current_valve
+    @valve_hash[current_location]
+  end
+
+  def flow_rate
+    valves.select { |v| @open_valves.include?(v.name) }.map(&:flow_rate).sum
+  end
+
+  def move_to(new_location)
+    raise "no tunnel from #{current_location} to #{new_location}" unless current_valve.can_move_to?(new_location)
+    @current_location = new_location
+    tick
+  end
+
+  def tick
+    @time_elapsed += 1
+    @pressure_released += flow_rate
+  end
+
+  def open_valve
+    tick
+    @open_valves << current_location
+    @flow_rate += current_valve.flow_rate
+    @value_paths = @value_paths.select { |path| path.destination != current_location }
+  end
+end
+
 class Map
   def self.parse(input, time_limit)
     lines = input.split("\n")
@@ -64,23 +122,19 @@ class Map
       valve = Valve.new(match[1], match[2].to_i, match[3].split(", "))
       valves[valve.name] = valve
     end
-    map = Map.new(valves, time_limit)
-    map.map_value_paths
-    map
+    Map.new(valves.freeze, time_limit)
   end
 
-  attr_reader :time_elapsed, :current_location, :pressure_released, :time_limit
+  attr_reader :time_limit, :paths
 
   def initialize(valve_hash, time_limit)
     @valve_hash = valve_hash
-    @time_elapsed = 0
-    @current_location = "AA"
-    @pressure_released = 0
     @time_limit = time_limit
-  end
-
-  def time_left
-    time_limit - time_elapsed
+    map_value_paths
+    @paths = [
+      Path.new(0, "AA", 0, time_limit, ["AA"],
+               @value_paths, [], @valve_hash, 0)
+    ]
   end
 
   def [](name)
@@ -88,37 +142,12 @@ class Map
   end
 
   def valves
-    @valve_hash.values.dup
-  end
-
-  def flow_rate
-    valves.select(&:open?).map(&:flow_rate).sum
-  end
-
-  def current_valve
-    @valve_hash[current_location]
-  end
-
-  def move_to(new_location)
-    raise "no tunnel from #{current_location} to #{new_location}" unless current_valve.can_move_to?(new_location)
-    @current_location = new_location
-    tick
+    @valve_hash.values
   end
 
   def travel_value_path(value_path)
     raise unless current_location == value_path.start_location
     value_path.path[1..].each { |location| move_to(location) }
-  end
-
-  def open_valve
-    tick
-    current_valve.open
-    @value_paths = @value_paths.select { |path| path.destination != current_location }
-  end
-
-  def tick
-    @time_elapsed += 1
-    @pressure_released += flow_rate
   end
 
   def map_value_paths
@@ -153,7 +182,7 @@ class Map
   end
 
   def maximize_pressure_released
-    
+
   end
 end
 
@@ -174,10 +203,11 @@ raise unless map["BB"].flow_rate == 13
 raise unless map["BB"].leads_to.sort == ["AA", "CC"]
 raise unless map["HH"].flow_rate == 22
 raise unless map["HH"].leads_to.sort == ["GG"]
-raise unless map.valves.all?(&:closed?)
-raise unless map.flow_rate == 0
-raise unless map.time_elapsed == 0
-raise unless map.current_location == "AA"
+raise unless map.paths.size == 1
+raise unless map.paths[0].open_valves.size == 0
+raise unless map.paths[0].flow_rate == 0
+raise unless map.paths[0].time_elapsed == 0
+raise unless map.paths[0].current_location == "AA"
 
 raise unless map.value_paths_from("AA").size == 3
 aa_jj_path = map.value_paths_from("AA").select { |path| path.destination == "JJ" }.first
@@ -188,26 +218,26 @@ raise unless aa_jj_path.flow_possible_in(3) == 0
 raise unless aa_jj_path.flow_possible_in(4) == 21
 
 begin
-  map.move_to("nope")
+  map.paths[0].move_to("nope")
 rescue
-  raise unless map.time_elapsed == 0
-  raise unless map.current_location == "AA"
+  raise unless map.paths[0].time_elapsed == 0
+  raise unless map.paths[0].current_location == "AA"
 end
 
-map.move_to("DD")
-raise unless map.valves.all?(&:closed?)
-raise unless map.flow_rate == 0
-raise unless map.time_elapsed == 1
-raise unless map.current_location == "DD"
+map.paths[0].move_to("DD")
+raise unless map.paths[0].open_valves.size == 0
+raise unless map.paths[0].flow_rate == 0
+raise unless map.paths[0].time_elapsed == 1
+raise unless map.paths[0].current_location == "DD"
 
-map.open_valve
-raise unless map["DD"].open?
-raise unless map.pressure_released == 0
-raise unless map.time_elapsed == 2
+map.paths[0].open_valve
+raise unless map.paths[0].open_valves == ["DD"]
+raise unless map.paths[0].pressure_released == 0
+raise unless map.paths[0].time_elapsed == 2
 
-map.move_to("CC")
-raise unless map.pressure_released == 20
-raise unless map.time_elapsed == 3
-raise unless map.current_location == "CC"
+map.paths[0].move_to("CC")
+raise unless map.paths[0].pressure_released == 20
+raise unless map.paths[0].time_elapsed == 3
+raise unless map.paths[0].current_location == "CC"
 
 map = Map.parse(test_input, 30)
