@@ -107,7 +107,10 @@ class Path
   end
 
   def tick
-    raise "out of time" if time_elapsed == time_limit
+    if time_elapsed == time_limit
+      puts inspect
+      raise "out of time"
+    end
     @time_elapsed += 1
     @pressure_released += flow_rate
     @log << "[#{time_elapsed}] Values #{open_valves.join(", ")} are open, releasing #{flow_rate} pressure (total #{pressure_released})"
@@ -122,7 +125,10 @@ class Path
   end
 
   def value_paths_from(start_location)
-    @value_paths.select { |value_path| value_path.start_location == start_location }
+    @value_paths.select do |value_path|
+      value_path.start_location == start_location &&
+        value_path.flow_possible_in(time_left) > 0
+    end
   end
 
   def travel_value_path(value_path)
@@ -181,12 +187,10 @@ class Map
   end
 
   def map_value_paths
+    puts "mapping value paths..."
     @value_paths = valves.map do |valve|
-      # puts("starting #{valve.name}")
       paths = identify_next_stops([valve.name])
-      # puts("result is #{paths}")
       paths.map do |path|
-        # puts("creating #{path.inspect}")
         ValuePath.new(path, @valve_hash[path.last].flow_rate)
       end
     end.flatten
@@ -197,14 +201,12 @@ class Map
 
     current_valve = @valve_hash[path.last]
     if path.size > 1 && current_valve.flow_rate > 0
-      # puts("done")
       paths << path
     end
 
     paths += current_valve.leads_to
                  .select { |next_valve| !path.include?(next_valve) }
                  .reduce([]) do |new_paths, next_valve|
-      # puts("next #{next_valve}")
       new_paths += identify_next_stops(path + [next_valve])
     end
 
@@ -217,13 +219,23 @@ class Map
   def maximize_pressure_released
     while paths.any? { |path| !path.complete? }
       puts "value_path_step with #{paths.size} paths (#{paths.select(&:complete?).size} complete)"
-      sleep 0.1
       value_path_step
     end
   end
 
   def value_path_step
     @paths = paths.map(&:travel_all_possible_value_paths).flatten
+
+    # Group by open_valves + current_location and prune the ones with lower pressure_released
+    puts "going from #{@paths.size} ... "
+    @paths = @paths.group_by { |path| [path.open_valves.sort, path.current_location, path.time_elapsed] }
+                   .map { |_, paths| paths.sort_by(&:pressure_released).last }
+    puts "... to #{@paths.size}"
+
+    # Remove completed paths that aren't winners
+    @paths = @paths - @paths.select(&:complete?).sort_by(&:pressure_released)[...-1]
+    puts "... to #{@paths.size}"
+    @paths
   end
 end
 
@@ -300,14 +312,16 @@ map.value_path_step
 map.value_path_step
 map.value_path_step
 map.value_path_step
-# map.paths.select { |p| p.valve_path[0..4] == ["AA", "DD", "CC", "BB", "AA"]}[0].log.each { |l| puts l }
-# puts map.paths.map(&:pressure_released).sort.inspect
 
 map = Map.parse(test_input, 30)
 map.maximize_pressure_released
 # puts map.paths.map(&:pressure_released).sort.tally.inspect
 puts map.paths.map(&:pressure_released).max
 
-# TODO
-# map_value_paths needs to go from each valve to every other valve - you might want to
-# pass a closed valve to get to a more valuable one first
+puts "********************************************************************"
+input = File.read("input.txt")
+map = Map.parse(input, 30)
+map.maximize_pressure_released
+# puts map.paths.map(&:pressure_released).sort.tally.inspect
+puts map.paths.map(&:pressure_released).max
+
